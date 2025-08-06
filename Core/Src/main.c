@@ -60,6 +60,7 @@ TIM_HandleTypeDef htim2;
 int freq[3];
 int prev_encoder;
 char choice;
+char prev_choice;
 char num_string [3][7];
 uint8_t choiced_num;
 uint8_t choiced_channel;
@@ -228,10 +229,10 @@ void print_interface_mode1(){
 }
 
 void int_mode_0(){
-	if (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_1) == GPIO_PIN_RESET) {  // Если кнопка нажата (подтяжка к VCC)
+	if (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0) == GPIO_PIN_RESET) {  // Если кнопка нажата (подтяжка к VCC)
 		choice=1;
 	}
-	while (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_1) == GPIO_PIN_RESET);  // Ждём отпускания
+	while (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0) == GPIO_PIN_RESET);  // Ждём отпускания
 	if(choice==0){
 		choiced_channel=get_encoder()%3;
 		print_interface_mode0();
@@ -264,6 +265,18 @@ void max_freq(){
 }
 
 void int_mode_1(){
+	/*if(choice==1 && prev_choice==0){
+		if(choiced_num!=0){
+			prev_encoder=1000;
+			set_encoder(1000);
+
+		}
+	}else if(choice==0 && prev_choice==1){
+		set_encoder(choiced_num);
+	}
+
+*/
+
 	if (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_1) == GPIO_PIN_RESET) {  // Если кнопка нажата (подтяжка к VCC)
 		if(choice==0){
 
@@ -377,6 +390,7 @@ int main(void)
   MX_USB_DEVICE_Init();
   /* USER CODE BEGIN 2 */
   HAL_TIM_Encoder_Start(&htim1, TIM_CHANNEL_ALL);
+
   ssd1306_Init();
   //si5351_Init();
   set_encoder(0);//выставление энкодера в 0
@@ -384,6 +398,7 @@ int main(void)
       freq[1]=8;//начальная минимальная частота канала 1
       freq[2]=8;//начальная минимальная частота канала 2
       choice=0;//переменная для считывания был ли нажат энкодер
+      prev_choice=0;
       choiced_channel=2;
       min_freq();
       choiced_channel=1;
@@ -394,6 +409,7 @@ int main(void)
       interface_mode=0;//переменная для определения что должно показыватиься на экране(0-значения частот, 1-редактирование частоты)
       prev_encoder=8;
       print_interface_mode0();
+      HAL_TIM_Base_Start_IT(&htim2);  // Запуск таймера с прерыванием
   /*
   si5351_set_frequency(0, 8000);//устанвливаем частоту в минимальную
   si5351_set_frequency(1, 8000);//устанвливаем частоту в минимальную
@@ -401,7 +417,7 @@ int main(void)
   si5351_enableOutputs(0xFF);//включаем все выходы
   */
 
-  HAL_TIM_Base_Start_IT(&htim2);  // Запуск таймера с прерыванием
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -411,7 +427,16 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-
+	  /*if (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0) == GPIO_PIN_RESET) {
+		  if(choice==0){
+			  choice=1;
+			  prev_choice=0;
+		  }else{
+			  choice=0;
+			  prev_choice=1;
+		  }
+	  }
+	  while (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0) == GPIO_PIN_RESET);  // Ждём отпускания*/
   }
   /* USER CODE END 3 */
 }
@@ -599,9 +624,9 @@ static void MX_TIM2_Init(void)
 
   /* USER CODE END TIM2_Init 1 */
   htim2.Instance = TIM2;
-  htim2.Init.Prescaler = 599;
+  htim2.Init.Prescaler = 299;
   htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim2.Init.Period = 999;
+  htim2.Init.Period = 499;
   htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_PWM_Init(&htim2) != HAL_OK)
