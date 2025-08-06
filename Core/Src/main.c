@@ -22,6 +22,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "stm32f1xx_hal_flash.h"
 #include "ssd1306.h"
 #include "ssd1306_fonts.h"
 #include <math.h>
@@ -35,12 +36,18 @@
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-
+typedef struct {
+    uint32_t magic;          // Метка валидности (0xDEADBEEF)
+    int32_t  data[3]; // Полезные данные
+} FlashData;
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-
+#define FLASH_USER_START_ADDR  0x0801FC00  // Начало Page 127
+#define ARRAY_SIZE 3           // Размер массива
+#define FLASH_USER_START_ADDR  0x0801FC00  // Page 127
+#define FLASH_MAGIC_NUMBER     0xDEADBEEF  // Метка валидности
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -57,7 +64,7 @@ TIM_HandleTypeDef htim2;
 
 /* USER CODE BEGIN PV */
 
-int freq[3];
+int32_t freq[3];
 int prev_encoder;
 char choice;
 char prev_choice;
@@ -160,6 +167,62 @@ void int_to_str(int num, char *str) {
     }
     str[j] = '\0';
 }
+
+char Is_Flash_Valid() {
+    // Чтение метки из Flash
+    uint32_t magic = *(__IO uint32_t*)FLASH_USER_START_ADDR;
+    if(magic == FLASH_MAGIC_NUMBER){
+    	return 1;
+    }else{
+    	return 0;
+    }
+    //return (magic == FLASH_MAGIC_NUMBER);
+}
+
+void Read_Flash_Array(int32_t *output) {
+    if (!Is_Flash_Valid()) {
+        // Данные не валидны (первый запуск)
+        memset(output, 0, ARRAY_SIZE * sizeof(int32_t));
+        return;
+    }
+
+    // Чтение данных (пропускаем метку)
+    FlashData *flash_data = (FlashData*)FLASH_USER_START_ADDR;
+    memcpy(output, flash_data->data, ARRAY_SIZE * sizeof(int32_t));
+}
+
+void Write_Flash_Array(int32_t *data) {
+    HAL_FLASH_Unlock();
+
+    // Стирание страницы
+    FLASH_EraseInitTypeDef erase;
+    erase.TypeErase = FLASH_TYPEERASE_PAGES;
+    erase.PageAddress = FLASH_USER_START_ADDR;
+    erase.NbPages = 1;
+
+    uint32_t page_error;
+    HAL_FLASHEx_Erase(&erase, &page_error);
+
+    // Запись структуры (метка + данные)
+    FlashData flash_data;
+    flash_data.magic = FLASH_MAGIC_NUMBER;
+    memcpy(flash_data.data, data, ARRAY_SIZE * sizeof(int32_t));
+
+    // Запись по 16-битным полусловам
+    uint32_t addr = FLASH_USER_START_ADDR;
+    uint32_t *ptr = (uint32_t*)&flash_data;
+    uint32_t size = sizeof(FlashData) / 2; // Количество 16-битных слов
+
+    for (uint32_t i = 0; i < size; i++) {
+        uint32_t value = ptr[i];
+        HAL_FLASH_Program(FLASH_TYPEPROGRAM_HALFWORD, addr, value & 0xFFFF);
+        HAL_FLASH_Program(FLASH_TYPEPROGRAM_HALFWORD, addr + 2, (value >> 16) & 0xFFFF);
+        addr += 4;
+    }
+
+    HAL_FLASH_Lock();
+}
+
 
 int get_encoder(){
 	return (int)TIM1->CNT/4;//для энкодера использующегося в проекте
@@ -311,6 +374,7 @@ void int_mode_1(){
 			si5351_set_frequency(choiced_channel, freq[choiced_channel]*1000);
 			si5351_enableOutputs(0xFF);
 			*/
+			Write_Flash_Array(freq);
 			set_encoder(choiced_channel);
 			print_interface_mode0();
 		}else{
@@ -390,22 +454,24 @@ int main(void)
   MX_USB_DEVICE_Init();
   /* USER CODE BEGIN 2 */
   HAL_TIM_Encoder_Start(&htim1, TIM_CHANNEL_ALL);
-
   ssd1306_Init();
   //si5351_Init();
   set_encoder(0);//выставление энкодера в 0
       freq[0]=8;//начальная минимальная частота канала 0
       freq[1]=8;//начальная минимальная частота канала 1
       freq[2]=8;//начальная минимальная частота канала 2
+      if (Is_Flash_Valid()==0) {
+          Write_Flash_Array(freq);
+      }else{
+    	  Read_Flash_Array(freq);
+      }
       choice=0;//переменная для считывания был ли нажат энкодер
       prev_choice=0;
-      choiced_channel=2;
-      min_freq();
-      choiced_channel=1;
-      min_freq();
+      int_to_str(freq[2],num_string[2]);
+      int_to_str(freq[1],num_string[1]);
+      int_to_str(freq[0],num_string[0]);
       choiced_num=0;//переменная для определения выбранной цифры в массиве частоты
       choiced_channel=0;// номер выбранного канала
-      min_freq();
       interface_mode=0;//переменная для определения что должно показыватиься на экране(0-значения частот, 1-редактирование частоты)
       prev_encoder=8;
       print_interface_mode0();
