@@ -287,6 +287,12 @@ void print_interface_mode1(){
 		}
 		ssd1306_WriteString("   ", Font_7x10, White);
 		ssd1306_WriteString("send", Font_7x10, White);
+		if(choice==1){
+			ssd1306_SetCursor(1+((6-choiced_num)*7), 18);
+			ssd1306_WriteString("^", Font_7x10, White);
+		}
+
+
 	}
 	ssd1306_UpdateScreen();
 }
@@ -340,7 +346,7 @@ void int_mode_1(){
 
 */
 
-	if (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_1) == GPIO_PIN_RESET) {  // Если кнопка нажата (подтяжка к VCC)
+	if (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0) == GPIO_PIN_RESET) {  // Если кнопка нажата (подтяжка к VCC)
 		if(choice==0){
 
 			choice=1;
@@ -355,7 +361,7 @@ void int_mode_1(){
 		}
 
 	}
-	while (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_1) == GPIO_PIN_RESET);  // Ждём отпускания
+	while (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0) == GPIO_PIN_RESET);  // Ждём отпускания
 	if(choice==0){
 		choiced_num=get_encoder()%7;
 		print_interface_mode1();
