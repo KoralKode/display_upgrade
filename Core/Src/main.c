@@ -294,6 +294,13 @@ void print_interface_mode1(){
 
 
 	}
+	if(freq[choiced_channel]==160000){
+		ssd1306_SetCursor(77, 18);
+		ssd1306_WriteString("MAX", Font_7x10, White);
+	}else if(freq[choiced_channel]==8){
+		ssd1306_SetCursor(77, 18);
+		ssd1306_WriteString("MIN", Font_7x10, White);
+	}
 	ssd1306_UpdateScreen();
 }
 
@@ -334,18 +341,6 @@ void max_freq(){
 }
 
 void int_mode_1(){
-	/*if(choice==1 && prev_choice==0){
-		if(choiced_num!=0){
-			prev_encoder=1000;
-			set_encoder(1000);
-
-		}
-	}else if(choice==0 && prev_choice==1){
-		set_encoder(choiced_num);
-	}
-
-*/
-
 	if (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0) == GPIO_PIN_RESET) {  // Если кнопка нажата (подтяжка к VCC)
 		if(choice==0){
 
@@ -369,13 +364,6 @@ void int_mode_1(){
 		if(choiced_num==0){
 			choice=0;
 			interface_mode=0;
-			if(freq[choiced_channel]<8){
-				freq[choiced_channel]=8;
-				min_freq();
-			}else if(freq[choiced_channel]>160000){
-				freq[choiced_channel]=160000;
-				max_freq();
-			}
 			/*
 			si5351_set_frequency(choiced_channel, freq[choiced_channel]*1000);
 			si5351_enableOutputs(0xFF);
@@ -395,6 +383,13 @@ void int_mode_1(){
 
 			//set_encoder(1000);
 			prev_encoder=delta;
+			if(freq[choiced_channel]<8){
+				freq[choiced_channel]=8;
+				min_freq();
+			}else if(freq[choiced_channel]>160000){
+				freq[choiced_channel]=160000;
+				max_freq();
+			}
 			int_to_str(freq[choiced_channel],num_string[choiced_channel]);
 			print_interface_mode1();
 
