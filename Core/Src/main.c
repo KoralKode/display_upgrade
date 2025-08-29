@@ -64,14 +64,13 @@ TIM_HandleTypeDef htim2;
 
 /* USER CODE BEGIN PV */
 
-int32_t freq[3];
-int prev_encoder;
-char choice;
-char prev_choice;
-char num_string [3][7];
-uint8_t choiced_num;
-uint8_t choiced_channel;
-char interface_mode;
+int32_t freq[3];//массив частот
+int prev_encoder;//предыдущее значение энкодера
+char choice;//переменная выбора, 0-энкодер не был нажат или был нажат чётное кол-во раз, 1- нечётное
+char num_string [3][7];//массив частот в строках
+uint8_t choiced_num;//порядковый номер выбранной цифры в значении частоты
+uint8_t choiced_channel;//номер выбранного канала
+char interface_mode;//0-интерфейс выбора канал, 1-интерфейс выбора частот
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -229,14 +228,16 @@ int get_encoder(){
 }
 
 void set_encoder(int e){
-	TIM1->CNT=e*4;
+	TIM1->CNT=e*4;//для энкодера использующегося в проекте
 }
 
 
 void print_interface_mode0(){
-	ssd1306_SetCursor(1, 1);
-	ssd1306_Fill(Black);
-	ssd1306_WriteString(num_string[0], Font_7x10, White);
+	//далее 3 строки обычного вывода на дисплей строки
+	ssd1306_SetCursor(1, 1);//установка курсора
+	ssd1306_Fill(Black);//заполнение экрана чёрным(типа стирание)
+	ssd1306_WriteString(num_string[0], Font_7x10, White);//отправка строки
+	//далее выводятся строки, чтобы частоты каналов отображались корректно
 	ssd1306_WriteString("   ", Font_7x10, White);
 	ssd1306_WriteString(num_string[1], Font_7x10, White);
 	ssd1306_SetCursor(1, 10);//для переноса на следующую строку
@@ -249,10 +250,11 @@ void print_interface_mode0(){
 	}else{
 		ssd1306_WriteString("ch2", Font_7x10, White);
 	}
-	ssd1306_UpdateScreen();
+	ssd1306_UpdateScreen();//самая важная функция, без которой что было отправлено на дисплей не отобразится
 }
 
 void print_interface_mode1(){
+	//смысл такой-же, как и в mode0, но здесь цифра большего размера показывает, что она выбрана, а ^ указывает на изменение этой цифры
 	ssd1306_SetCursor(1, 1);
 	ssd1306_Fill(Black);
 	if(choiced_num==0){
@@ -294,6 +296,7 @@ void print_interface_mode1(){
 
 
 	}
+	//проверка пределов значений частот и соответствуещие напоминания об этом
 	if(freq[choiced_channel]==160000){
 		ssd1306_SetCursor(77, 18);
 		ssd1306_WriteString("MAX", Font_7x10, White);
@@ -310,9 +313,11 @@ void int_mode_0(){
 	}
 	while (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0) == GPIO_PIN_RESET);  // Ждём отпускания
 	if(choice==0){
+		//кнопка не нажата, смотрим значение энкодера и его остаток от деления даёт выбранный канал
 		choiced_channel=get_encoder()%3;
 		print_interface_mode0();
 	}else if(choice==1){
+		//был выбран канал и нажата кнопка, преключаем интерфейс на редактирование частоты
 		set_encoder(1);
 		choiced_num=1;//потому что есть send который будем считать за 0 положение
 		interface_mode=1;
@@ -323,12 +328,12 @@ void int_mode_0(){
 }
 
 
-
+//функция выставления минимальной частоты
 void min_freq(){
 	num_string[choiced_channel][0]='8';
 	num_string[choiced_channel][1]='\0';
 }
-
+//функция выставления максимальной частоты
 void max_freq(){
 	num_string[choiced_channel][0]='1';
 	num_string[choiced_channel][1]='6';
@@ -342,6 +347,7 @@ void max_freq(){
 
 void int_mode_1(){
 	if (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0) == GPIO_PIN_RESET) {  // Если кнопка нажата (подтяжка к VCC)
+		//поменялось с 0 на 1 значит начали редактирование цифры, а если был выбран send(0), то происходит отправка частоты и изменение интерфейса на mode0
 		if(choice==0){
 
 			choice=1;
@@ -351,6 +357,7 @@ void int_mode_1(){
 
 			}
 		}else{
+			//закончили редактирование цифры, устанавливаем энкодер на выбранную цифру(номер)
 			choice=0;
 			set_encoder(choiced_num);
 		}
@@ -362,27 +369,28 @@ void int_mode_1(){
 		print_interface_mode1();
 	}else if(choice==1){
 		if(choiced_num==0){
+			//отправка частоты
 			choice=0;
 			interface_mode=0;
 			/*
 			si5351_set_frequency(choiced_channel, freq[choiced_channel]*1000);
 			si5351_enableOutputs(0xFF);
 			*/
-			Write_Flash_Array(freq);
+			Write_Flash_Array(freq);//обновляем значение в памяти
 			set_encoder(choiced_channel);
 			print_interface_mode0();
 		}else{
-			int delta = get_encoder();
+			//изменение цифры в значении частоты
+			int delta = get_encoder();//минимизируем вызов функции
 
-			freq[choiced_channel]+=(delta-prev_encoder)*pow(10,choiced_num-1);
+			freq[choiced_channel]+=(delta-prev_encoder)*pow(10,choiced_num-1);//сразу меняем частоту при изменении энкодера
 			if(freq[choiced_channel]<0){
-				freq[choiced_channel]=1000000+freq[choiced_channel];
+				freq[choiced_channel]=160000+freq[choiced_channel];//если частота очень мала делаем её почти максимальной
 			}else if(freq[choiced_channel]>999999){
-				freq[choiced_channel]=(7+(delta-prev_encoder)*pow(10,choiced_num-1));
+				freq[choiced_channel]=(7+(delta-prev_encoder)*pow(10,choiced_num-1));//если частота очень большая, то делаем её почти минимальной
 			}
-
-			//set_encoder(1000);
 			prev_encoder=delta;
+			//проверяем пределы
 			if(freq[choiced_channel]<8){
 				freq[choiced_channel]=8;
 				min_freq();
@@ -390,12 +398,13 @@ void int_mode_1(){
 				freq[choiced_channel]=160000;
 				max_freq();
 			}
-			int_to_str(freq[choiced_channel],num_string[choiced_channel]);
+			int_to_str(freq[choiced_channel],num_string[choiced_channel]);//обновляем строку с выбранной частотой
 			print_interface_mode1();
 
 		}
 	}
 }
+//функция для работы программы во время прерываний
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
     if (htim->Instance == TIM2)
@@ -467,7 +476,7 @@ int main(void)
     	  Read_Flash_Array(freq);
       }
       choice=0;//переменная для считывания был ли нажат энкодер
-      prev_choice=0;
+      //записываем частоты в строки для них
       int_to_str(freq[2],num_string[2]);
       int_to_str(freq[1],num_string[1]);
       int_to_str(freq[0],num_string[0]);
@@ -494,16 +503,7 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-	  /*if (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0) == GPIO_PIN_RESET) {
-		  if(choice==0){
-			  choice=1;
-			  prev_choice=0;
-		  }else{
-			  choice=0;
-			  prev_choice=1;
-		  }
-	  }
-	  while (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0) == GPIO_PIN_RESET);  // Ждём отпускания*/
+
   }
   /* USER CODE END 3 */
 }
