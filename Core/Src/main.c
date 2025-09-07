@@ -32,6 +32,8 @@
 #include <stdlib.h>
 #include "si5351.h"
 #include "stm32f1xx_hal_i2c.h"
+#include "socket.h"
+
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -48,6 +50,11 @@ typedef struct {
 #define ARRAY_SIZE 3           // Размер массива
 #define FLASH_USER_START_ADDR  0x0801FC00  // Page 127
 #define FLASH_MAGIC_NUMBER     0xDEADBEEF  // Метка валидности
+//ethernet код
+#define HTTP_SOCKET     0
+#define PORT_TCPS        5000
+#define DATA_BUF_SIZE 2048
+uint8_t gDATABUF[DATA_BUF_SIZE];
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -58,6 +65,8 @@ typedef struct {
 /* Private variables ---------------------------------------------------------*/
 I2C_HandleTypeDef hi2c1;
 I2C_HandleTypeDef hi2c2;
+
+SPI_HandleTypeDef hspi1;
 
 TIM_HandleTypeDef htim1;
 TIM_HandleTypeDef htim2;
@@ -71,6 +80,19 @@ char num_string [3][7];//массив частот в строках
 uint8_t choiced_num;//порядковый номер выбранной цифры в значении частоты
 uint8_t choiced_channel;//номер выбранного канала
 char interface_mode;//0-интерфейс выбора канал, 1-интерфейс выбора частот
+char is_ethernet_work;
+uint8_t socket_status;
+//ethernet код
+wiz_NetInfo gWIZNETINFO={ .mac={0x00, 0x08, 0xDC, 0xAB, 0xCD, 0xEF},
+	    .ip = {192, 168, 0, 100},                     // IP платы
+	    .sn = {255, 255, 255, 0},                     // Маска подсети
+	    .gw = {192, 168, 0, 1},                       // Шлюз (роутер)
+	    .dns = {0, 0, 0, 0},                          // DNS (можно 0)
+	    .dhcp = NETINFO_STATIC                        // Статический IP
+
+
+};
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -80,6 +102,7 @@ static void MX_I2C1_Init(void);
 static void MX_TIM1_Init(void);
 static void MX_I2C2_Init(void);
 static void MX_TIM2_Init(void);
+static void MX_SPI1_Init(void);
 /* USER CODE BEGIN PFP */
 err_t si5351_set_frequency(uint8_t output, uint32_t frequency) {
     // Проверка допустимости выхода и частоты
@@ -308,6 +331,7 @@ void print_interface_mode1(){
 }
 
 void int_mode_0(){
+
 	if (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0) == GPIO_PIN_RESET) {  // Если кнопка нажата (подтяжка к VCC)
 		choice=1;
 	}
@@ -404,14 +428,177 @@ void int_mode_1(){
 		}
 	}
 }
+uint32_t str_to_int(char* str){
+    uint32_t ans = 0;
+    uint8_t i = 0;
+
+    // Обрабатываем цифры
+    while(str[i] >= '0' && str[i] <= '9'){
+        ans = ans * 10 + (str[i] - '0');
+        i++;
+    }
+
+    return ans;
+}
+//ethernet код
+void W5500_Select(void){
+	HAL_GPIO_WritePin(CS_GPIO_Port, CS_Pin, GPIO_PIN_RESET);
+}
+
+void W5500_Unselect(void){
+	HAL_GPIO_WritePin(CS_GPIO_Port, CS_Pin, GPIO_PIN_SET);
+}
+
+void W5500_ReadBuff(uint8_t* buff, uint16_t len){
+	HAL_SPI_Receive(&hspi1,buff,len,HAL_MAX_DELAY);
+}
+
+void W5500_WriteBuff(uint8_t* buff,uint16_t len){
+	HAL_SPI_Transmit(&hspi1,buff,len,HAL_MAX_DELAY);
+}
+
+uint8_t W5500_ReadByte(void){
+	uint8_t byte;
+	W5500_ReadBuff(&byte, sizeof(byte));
+	return byte;
+}
+
+void W5500_WriteByte(uint8_t byte){
+	W5500_WriteBuff(&byte, sizeof(byte));
+}
+
+uint8_t stat;
+uint8_t reqnr;
+char Message[128];
+// Функция обработки клиентского подключения
+void process_client_connection(uint8_t sn)
+{
+    int32_t received_len;
+    uint8_t received_data[1024];
+
+
+
+    // Главный цикл обработки соединения
+    while(getSn_SR(sn) == SOCK_ESTABLISHED)
+    {
+        // Проверяем есть ли данные для чтения
+        uint16_t available = getSn_RX_RSR(sn);
+
+        if(available > 0)
+        {
+            // Читаем данные
+            received_len = recv(sn, received_data, sizeof(received_data)-1);
+
+            if(received_len > 0)
+            {
+                received_data[received_len] = '\0';
+                uint32_t r=str_to_int((char*)received_data);
+                if(r>7 && r<=160000){
+                	freq[choiced_channel]=r;
+                }
+                int_to_str(freq[choiced_channel], num_string[choiced_channel]);
+                print_interface_mode0();
+                HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET);
+                send(sn, (uint8_t*)"OK\r\n", 4);
+                if(strstr((char*)received_data, "EXIT") != NULL)
+                {
+                    send(sn, (uint8_t*)"Goodbye!\r\n", 10);
+
+                    break;
+                }
+
+            }
+        }
+  	  uint32_t t=HAL_GetTick();
+
+  	  while(t>HAL_GetTick()-10);
+        //HAL_Delay(10); // Небольшая задержка
+    }
+
+}
+// Функция инициализации сервера
+uint8_t init_server(uint8_t sn, uint16_t port)
+{
+    // Закрываем сокет если был открыт
+    if(getSn_SR(sn) != SOCK_CLOSED) {
+        close(sn);
+        //HAL_Delay(100);
+    }
+
+    // Создаем сокет
+    if((stat = socket(sn, Sn_MR_TCP, port, 0)) != sn) {
+
+        return 0;
+    }
+
+    // Слушаем порт
+    if((stat = listen(sn)) != SOCK_OK) {
+
+        close(sn);
+        return 0;
+    }
+
+    return 1;
+}
+void ethernet_work(){
+	// Мигание светодиодом в режиме ожидания
+	          static uint32_t led_timer = 0;
+	          if(HAL_GetTick() - led_timer > 500) {
+	              HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
+	              led_timer = HAL_GetTick();
+	          }
+
+	          // Проверяем статус сокета
+	          socket_status = getSn_SR(HTTP_SOCKET);
+
+	          switch(socket_status)
+	          {
+	              case SOCK_LISTEN:
+	                  // Ожидаем подключения
+	            	  uint32_t t=HAL_GetTick();
+	            	  while(t>HAL_GetTick()-100);
+	                  //HAL_Delay(100);
+	                  break;
+
+	              case SOCK_ESTABLISHED:
+	                  // Клиент подключен - обрабатываем
+	            	  //is_ethernet_work=1;
+	                  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET); // LED ON
+	                  process_client_connection(HTTP_SOCKET);
+	                  disconnect(HTTP_SOCKET);
+	                  close(HTTP_SOCKET);
+	                  // Переинициализируем сервер
+	                  init_server(HTTP_SOCKET, 80);
+	                  break;
+
+	              case SOCK_CLOSED:
+	                  // Сервер не запущен - пытаемся перезапустить
+	                  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET); // LED OFF
+	                  init_server(HTTP_SOCKET, 80);
+	                  //HAL_Delay(1000);
+	                  break;
+
+	              default:
+	                  // Неизвестный статус - перезапускаем
+
+	                  close(HTTP_SOCKET);
+	                  init_server(HTTP_SOCKET, 80);
+	                  //HAL_Delay(1000);
+	                  break;
+	          }
+
+	          //HAL_Delay(10);
+}
 //функция для работы программы во время прерываний
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
     if (htim->Instance == TIM2)
     {
-    	if(interface_mode==0){
+    	//uint8_t socket_status = getSn_SR(HTTP_SOCKET);
+    	if(interface_mode==0 && socket_status!=SOCK_ESTABLISHED){
+    		//ethernet_work();
     		int_mode_0();
-    	}else{
+    	}else if(interface_mode==1){
     		int_mode_1();
     	}
     }
@@ -462,10 +649,12 @@ int main(void)
   MX_I2C2_Init();
   MX_TIM2_Init();
   MX_USB_DEVICE_Init();
+  MX_SPI1_Init();
   /* USER CODE BEGIN 2 */
   HAL_TIM_Encoder_Start(&htim1, TIM_CHANNEL_ALL);
   ssd1306_Init();
   //si5351_Init();
+
   set_encoder(0);//выставление энкодера в 0
       freq[0]=8;//начальная минимальная частота канала 0
       freq[1]=8;//начальная минимальная частота канала 1
@@ -486,6 +675,19 @@ int main(void)
       prev_encoder=8;
       print_interface_mode0();
       HAL_TIM_Base_Start_IT(&htim2);  // Запуск таймера с прерыванием
+      // Инициализация W5500
+            reg_wizchip_cs_cbfunc(W5500_Select, W5500_Unselect);
+            reg_wizchip_spi_cbfunc(W5500_ReadByte, W5500_WriteByte);
+            reg_wizchip_spiburst_cbfunc(W5500_ReadBuff, W5500_WriteBuff);
+            //ssd1306_Init();
+            uint8_t rx_tx_buff_sizes[] = {2, 2, 2, 2, 2, 2, 2, 2};
+            wizchip_init(rx_tx_buff_sizes, rx_tx_buff_sizes);
+            wizchip_setnetinfo(&gWIZNETINFO);
+            ctlnetwork(CN_SET_NETINFO, (void*)&gWIZNETINFO);
+            //is_ethernet_work=0;
+            //HAL_Delay(1000);
+
+
   /*
   si5351_set_frequency(0, 8000);//устанвливаем частоту в минимальную
   si5351_set_frequency(1, 8000);//устанвливаем частоту в минимальную
@@ -503,7 +705,9 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-
+	  if(interface_mode==0){
+		  ethernet_work();
+	  }
   }
   /* USER CODE END 3 */
 }
@@ -619,6 +823,44 @@ static void MX_I2C2_Init(void)
   /* USER CODE BEGIN I2C2_Init 2 */
 
   /* USER CODE END I2C2_Init 2 */
+
+}
+
+/**
+  * @brief SPI1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_SPI1_Init(void)
+{
+
+  /* USER CODE BEGIN SPI1_Init 0 */
+
+  /* USER CODE END SPI1_Init 0 */
+
+  /* USER CODE BEGIN SPI1_Init 1 */
+
+  /* USER CODE END SPI1_Init 1 */
+  /* SPI1 parameter configuration*/
+  hspi1.Instance = SPI1;
+  hspi1.Init.Mode = SPI_MODE_MASTER;
+  hspi1.Init.Direction = SPI_DIRECTION_2LINES;
+  hspi1.Init.DataSize = SPI_DATASIZE_8BIT;
+  hspi1.Init.CLKPolarity = SPI_POLARITY_LOW;
+  hspi1.Init.CLKPhase = SPI_PHASE_1EDGE;
+  hspi1.Init.NSS = SPI_NSS_SOFT;
+  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_4;
+  hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
+  hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
+  hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
+  hspi1.Init.CRCPolynomial = 10;
+  if (HAL_SPI_Init(&hspi1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN SPI1_Init 2 */
+
+  /* USER CODE END SPI1_Init 2 */
 
 }
 
@@ -742,6 +984,9 @@ static void MX_GPIO_Init(void)
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET);
 
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(CS_GPIO_Port, CS_Pin, GPIO_PIN_RESET);
+
   /*Configure GPIO pin : PC13 */
   GPIO_InitStruct.Pin = GPIO_PIN_13;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
@@ -754,6 +999,13 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : CS_Pin */
+  GPIO_InitStruct.Pin = CS_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(CS_GPIO_Port, &GPIO_InitStruct);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 

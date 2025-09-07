@@ -22,6 +22,7 @@ Core/Src/main.o: ../Core/Src/main.c ../Core/Inc/main.h \
  ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_flash_ex.h \
  ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_i2c.h \
  ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_pwr.h \
+ ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_spi.h \
  ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_tim.h \
  ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_tim_ex.h \
  ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_pcd.h \
@@ -35,7 +36,11 @@ Core/Src/main.o: ../Core/Src/main.c ../Core/Inc/main.h \
  C:/Users/stepa/STM32CubeIDE/workspace_1.18.0/display/Drivers/OLED/ssd1306_fonts.h \
  C:/Users/stepa/STM32CubeIDE/workspace_1.18.0/display/Drivers/OLED/ssd1306.h \
  ../Core/Inc/si5351.h ../Core/Inc/si5351_errors.h \
- ../Core/Inc/si5351_asserts.h
+ ../Core/Inc/si5351_asserts.h \
+ C:/Users/stepa/STM32CubeIDE/workspace_1.18.0/display/Drivers/ioLibrary_Driver-master/Ethernet/socket.h \
+ C:/Users/stepa/STM32CubeIDE/workspace_1.18.0/display/Drivers/ioLibrary_Driver-master/Ethernet/wizchip_conf.h \
+ C:/Users/stepa/STM32CubeIDE/workspace_1.18.0/display/Drivers/ioLibrary_Driver-master/Ethernet/W5500/w5500.h \
+ C:/Users/stepa/STM32CubeIDE/workspace_1.18.0/display/Drivers/ioLibrary_Driver-master/Ethernet/wizchip_conf.h
 ../Core/Inc/main.h:
 ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal.h:
 ../Core/Inc/stm32f1xx_hal_conf.h:
@@ -60,6 +65,7 @@ Core/Src/main.o: ../Core/Src/main.c ../Core/Inc/main.h \
 ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_flash_ex.h:
 ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_i2c.h:
 ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_pwr.h:
+../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_spi.h:
 ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_tim.h:
 ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_tim_ex.h:
 ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_pcd.h:
@@ -75,3 +81,7 @@ C:/Users/stepa/STM32CubeIDE/workspace_1.18.0/display/Drivers/OLED/ssd1306.h:
 ../Core/Inc/si5351.h:
 ../Core/Inc/si5351_errors.h:
 ../Core/Inc/si5351_asserts.h:
+C:/Users/stepa/STM32CubeIDE/workspace_1.18.0/display/Drivers/ioLibrary_Driver-master/Ethernet/socket.h:
+C:/Users/stepa/STM32CubeIDE/workspace_1.18.0/display/Drivers/ioLibrary_Driver-master/Ethernet/wizchip_conf.h:
+C:/Users/stepa/STM32CubeIDE/workspace_1.18.0/display/Drivers/ioLibrary_Driver-master/Ethernet/W5500/w5500.h:
+C:/Users/stepa/STM32CubeIDE/workspace_1.18.0/display/Drivers/ioLibrary_Driver-master/Ethernet/wizchip_conf.h:

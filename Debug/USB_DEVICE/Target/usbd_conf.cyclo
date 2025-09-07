@@ -1,3 +1,4 @@
+../USB_DEVICE/Target/usbd_conf.c:641:20:USBD_Get_USB_Status	2
 ../USB_DEVICE/Target/usbd_conf.c:69:6:HAL_PCD_MspInit	2
 ../USB_DEVICE/Target/usbd_conf.c:90:6:HAL_PCD_MspDeInit	2
 ../USB_DEVICE/Target/usbd_conf.c:119:6:HAL_PCD_SetupStageCallback	1
@@ -29,4 +30,3 @@
 ../USB_DEVICE/Target/usbd_conf.c:594:7:USBD_static_malloc	1
 ../USB_DEVICE/Target/usbd_conf.c:605:6:USBD_static_free	1
 ../USB_DEVICE/Target/usbd_conf.c:619:6:HAL_PCDEx_SetConnectionState	1
-../USB_DEVICE/Target/usbd_conf.c:641:20:USBD_Get_USB_Status	5
