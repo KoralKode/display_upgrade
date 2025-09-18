@@ -164,7 +164,6 @@ err_t si5351_set_frequency(uint8_t output, uint32_t frequency) {
     return ERROR_NONE;
 }
 
-
 void int_to_str(int num, char *str) {
     char tmp[12]; // Временный буфер
     int i = 0;
@@ -396,10 +395,10 @@ void int_mode_1(){
 			//отправка частоты
 			choice=0;
 			interface_mode=0;
-			/*
+
 			si5351_set_frequency(choiced_channel, freq[choiced_channel]*1000);
 			si5351_enableOutputs(0xFF);
-			*/
+
 			Write_Flash_Array(freq);//обновляем значение в памяти
 			set_encoder(choiced_channel);
 			print_interface_mode0();
@@ -491,21 +490,26 @@ void process_client_connection(uint8_t sn)
 
             if(received_len > 0)
             {
-                received_data[received_len] = '\0';
-                uint32_t r=str_to_int((char*)received_data);
-                if(r>7 && r<=160000){
-                	freq[choiced_channel]=r;
-                }
-                int_to_str(freq[choiced_channel], num_string[choiced_channel]);
-                print_interface_mode0();
-                HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET);
-                send(sn, (uint8_t*)"OK\r\n", 4);
+            	received_data[received_len] = '\0';
                 if(strstr((char*)received_data, "EXIT") != NULL)
                 {
                     send(sn, (uint8_t*)"Goodbye!\r\n", 10);
 
                     break;
                 }
+
+                uint32_t r=str_to_int((char*)received_data);
+                if(r>7 && r<=160000){
+                	freq[choiced_channel]=r;
+                }
+                int_to_str(freq[choiced_channel], num_string[choiced_channel]);
+                si5351_set_frequency(choiced_channel, freq[choiced_channel]*1000);//устанвливаем частоту введённую через ethernet
+                si5351_enableOutputs(0xFF);//включаем все выходы
+                Write_Flash_Array(freq);
+                print_interface_mode0();
+                HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET);
+                send(sn, (uint8_t*)"OK\r\n", 4);
+
 
             }
         }
@@ -563,13 +567,17 @@ void ethernet_work(){
 	              case SOCK_ESTABLISHED:
 	                  // Клиент подключен - обрабатываем
 	            	  //is_ethernet_work=1;
+	            	  if(interface_mode==0){
 	                  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET); // LED ON
+
 	                  process_client_connection(HTTP_SOCKET);
 	                  disconnect(HTTP_SOCKET);
 	                  close(HTTP_SOCKET);
 	                  // Переинициализируем сервер
 	                  init_server(HTTP_SOCKET, 80);
+	            	  }
 	                  break;
+
 
 	              case SOCK_CLOSED:
 	                  // Сервер не запущен - пытаемся перезапустить
@@ -653,12 +661,13 @@ int main(void)
   /* USER CODE BEGIN 2 */
   HAL_TIM_Encoder_Start(&htim1, TIM_CHANNEL_ALL);
   ssd1306_Init();
-  //si5351_Init();
+  si5351_Init();
 
   set_encoder(0);//выставление энкодера в 0
-      freq[0]=8;//начальная минимальная частота канала 0
+      /*freq[0]=8;//начальная минимальная частота канала 0
       freq[1]=8;//начальная минимальная частота канала 1
       freq[2]=8;//начальная минимальная частота канала 2
+      */
       if (Is_Flash_Valid()==0) {
           Write_Flash_Array(freq);
       }else{
@@ -688,12 +697,12 @@ int main(void)
             //HAL_Delay(1000);
 
 
-  /*
-  si5351_set_frequency(0, 8000);//устанвливаем частоту в минимальную
-  si5351_set_frequency(1, 8000);//устанвливаем частоту в минимальную
-  si5351_set_frequency(2, 8000);//устанвливаем частоту в минимальную
+
+  si5351_set_frequency(0, freq[0]*1000);//устанвливаем частоту в минимальную
+  si5351_set_frequency(1, freq[1]*1000);//устанвливаем частоту в минимальную
+  si5351_set_frequency(2, freq[2]*1000);//устанвливаем частоту в минимальную
   si5351_enableOutputs(0xFF);//включаем все выходы
-  */
+
 
 
   /* USER CODE END 2 */
@@ -705,9 +714,9 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-	  if(interface_mode==0){
-		  ethernet_work();
-	  }
+
+	  ethernet_work();
+
   }
   /* USER CODE END 3 */
 }
