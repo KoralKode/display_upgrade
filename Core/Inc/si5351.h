@@ -1,317 +1,329 @@
-/**************************************************************************/
-/*!
-    @file     Adafruit_SI5351.h
-    @author   K. Townsend (Adafruit Industries)
-
-    @section LICENSE
-
-    Software License Agreement (BSD License)
-
-    Copyright (c) 2014, Adafruit Industries
-    All rights reserved.
-
-    Redistribution and use in source and binary forms, with or without
-    modification, are permitted provided that the following conditions are met:
-    1. Redistributions of source code must retain the above copyright
-    notice, this list of conditions and the following disclaimer.
-    2. Redistributions in binary form must reproduce the above copyright
-    notice, this list of conditions and the following disclaimer in the
-    documentation and/or other materials provided with the distribution.
-    3. Neither the name of the copyright holders nor the
-    names of its contributors may be used to endorse or promote products
-    derived from this software without specific prior written permission.
-
-    THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS ''AS IS'' AND ANY
-    EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
-    WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-    DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER BE LIABLE FOR ANY
-    DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
-    (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
-    LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
-    ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-    (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-    SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*/
-/**************************************************************************/
-#ifndef _SI5351_H_
-#define _SI5351_H_
-
-
-
-#include "si5351_errors.h"
-#include "si5351_asserts.h"
-
-
-#define SI5351_ADDRESS            (0x60) // Assumes ADDR pin = low
-#define SI5351_READBIT            (0x01)
-
-#define USE_FULL_ASSERT			  (0x01)
-
-/* Test setup from SI5351 ClockBuilder
- * -----------------------------------
- * XTAL:      25     MHz
- * Channel 0: 120.00 MHz
- * Channel 1: 12.00  MHz
- * Channel 2: 13.56  MHz
+/*
+ * si5351.h - Si5351 library for STM32
+ *
+ * Copyright (C) 2015 - 2016 Jason Milldrum <milldrum@gmail.com>
+ *                           Dana H. Myers <k6jq@comcast.net>
+ *
+ * Many defines derived from clk-si5351.h in the Linux kernel.
+ * Sebastian Hesselbarth <sebastian.hesselbarth@gmail.com>
+ * Rabeeh Khoury <rabeeh@solid-run.com>
+ *
+ * do_div() macro derived from /include/asm-generic/div64.h in
+ * the Linux kernel.
+ * Copyright (C) 2003 Bernardo Innocenti <bernie@develer.com>
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-static const uint8_t m_si5351_regs_15to92_149to170[100][2] =
+
+#ifndef __SI5351_H
+#define __SI5351_H
+
+#include <stdint.h>
+#include <stdbool.h>
+#include "stm32f1xx_hal.h"
+
+/* Define definitions */
+
+#define SI5351_BUS_BASE_ADDR            0x60
+#define SI5351_XTAL_FREQ                25000000
+#define SI5351_PLL_FIXED                80000000000ULL
+#define SI5351_FREQ_MULT                100ULL
+#define SI5351_DEFAULT_CLK              1000000000ULL
+
+#define SI5351_PLL_VCO_MIN              600000000
+#define SI5351_PLL_VCO_MAX              900000000
+#define SI5351_MULTISYNTH_MIN_FREQ      500000
+#define SI5351_MULTISYNTH_DIVBY4_FREQ   150000000
+#define SI5351_MULTISYNTH_MAX_FREQ      225000000
+#define SI5351_MULTISYNTH_SHARE_MAX     100000000
+#define SI5351_MULTISYNTH_SHARE_MIN     1024000
+#define SI5351_MULTISYNTH67_MAX_FREQ    SI5351_MULTISYNTH_DIVBY4_FREQ
+#define SI5351_CLKOUT_MIN_FREQ          4000
+#define SI5351_CLKOUT_MAX_FREQ          SI5351_MULTISYNTH_MAX_FREQ
+#define SI5351_CLKOUT67_MS_MIN          SI5351_PLL_VCO_MIN / SI5351_MULTISYNTH67_A_MAX
+#define SI5351_CLKOUT67_MIN_FREQ        SI5351_CLKOUT67_MS_MIN / 128
+#define SI5351_CLKOUT67_MAX_FREQ        SI5351_MULTISYNTH67_MAX_FREQ
+
+#define SI5351_PLL_A_MIN                15
+#define SI5351_PLL_A_MAX                90
+#define SI5351_PLL_B_MAX                (SI5351_PLL_C_MAX-1)
+#define SI5351_PLL_C_MAX                1048575
+#define SI5351_MULTISYNTH_A_MIN         6
+#define SI5351_MULTISYNTH_A_MAX         1800
+#define SI5351_MULTISYNTH67_A_MAX       254
+#define SI5351_MULTISYNTH_B_MAX         (SI5351_MULTISYNTH_C_MAX-1)
+#define SI5351_MULTISYNTH_C_MAX         1048575
+#define SI5351_MULTISYNTH_P1_MAX        ((1<<18)-1)
+#define SI5351_MULTISYNTH_P2_MAX        ((1<<20)-1)
+#define SI5351_MULTISYNTH_P3_MAX        ((1<<20)-1)
+#define SI5351_VCXO_PULL_MIN            30
+#define SI5351_VCXO_PULL_MAX            240
+#define SI5351_VCXO_MARGIN              103
+
+#define SI5351_DEVICE_STATUS            0
+#define SI5351_INTERRUPT_STATUS         1
+#define SI5351_INTERRUPT_MASK           2
+#define SI5351_STATUS_SYS_INIT          (1<<7)
+#define SI5351_STATUS_LOL_B             (1<<6)
+#define SI5351_STATUS_LOL_A             (1<<5)
+#define SI5351_STATUS_LOS               (1<<4)
+#define SI5351_OUTPUT_ENABLE_CTRL       3
+#define SI5351_OEB_PIN_ENABLE_CTRL      9
+#define SI5351_PLL_INPUT_SOURCE         15
+#define SI5351_CLKIN_DIV_MASK           (3<<6)
+#define SI5351_CLKIN_DIV_1              (0<<6)
+#define SI5351_CLKIN_DIV_2              (1<<6)
+#define SI5351_CLKIN_DIV_4              (2<<6)
+#define SI5351_CLKIN_DIV_8              (3<<6)
+#define SI5351_PLLB_SOURCE              (1<<3)
+#define SI5351_PLLA_SOURCE              (1<<2)
+
+#define SI5351_CLK0_CTRL                16
+#define SI5351_CLK1_CTRL                17
+#define SI5351_CLK2_CTRL                18
+#define SI5351_CLK3_CTRL                19
+#define SI5351_CLK4_CTRL                20
+#define SI5351_CLK5_CTRL                21
+#define SI5351_CLK6_CTRL                22
+#define SI5351_CLK7_CTRL                23
+#define SI5351_CLK_POWERDOWN            (1<<7)
+#define SI5351_CLK_INTEGER_MODE         (1<<6)
+#define SI5351_CLK_PLL_SELECT           (1<<5)
+#define SI5351_CLK_INVERT               (1<<4)
+#define SI5351_CLK_INPUT_MASK           (3<<2)
+#define SI5351_CLK_INPUT_XTAL           (0<<2)
+#define SI5351_CLK_INPUT_CLKIN          (1<<2)
+#define SI5351_CLK_INPUT_MULTISYNTH_0_4 (2<<2)
+#define SI5351_CLK_INPUT_MULTISYNTH_N   (3<<2)
+#define SI5351_CLK_DRIVE_STRENGTH_MASK  (3<<0)
+#define SI5351_CLK_DRIVE_STRENGTH_2MA   (0<<0)
+#define SI5351_CLK_DRIVE_STRENGTH_4MA   (1<<0)
+#define SI5351_CLK_DRIVE_STRENGTH_6MA   (2<<0)
+#define SI5351_CLK_DRIVE_STRENGTH_8MA   (3<<0)
+
+#define SI5351_CLK3_0_DISABLE_STATE     24
+#define SI5351_CLK7_4_DISABLE_STATE     25
+#define SI5351_CLK_DISABLE_STATE_MASK   3
+#define SI5351_CLK_DISABLE_STATE_LOW    0
+#define SI5351_CLK_DISABLE_STATE_HIGH   1
+#define SI5351_CLK_DISABLE_STATE_FLOAT  2
+#define SI5351_CLK_DISABLE_STATE_NEVER  3
+
+#define SI5351_PARAMETERS_LENGTH        8
+#define SI5351_PLLA_PARAMETERS          26
+#define SI5351_PLLB_PARAMETERS          34
+#define SI5351_CLK0_PARAMETERS          42
+#define SI5351_CLK1_PARAMETERS          50
+#define SI5351_CLK2_PARAMETERS          58
+#define SI5351_CLK3_PARAMETERS          66
+#define SI5351_CLK4_PARAMETERS          74
+#define SI5351_CLK5_PARAMETERS          82
+#define SI5351_CLK6_PARAMETERS          90
+#define SI5351_CLK7_PARAMETERS          91
+#define SI5351_CLK6_7_OUTPUT_DIVIDER    92
+#define SI5351_OUTPUT_CLK_DIV_MASK      (7 << 4)
+#define SI5351_OUTPUT_CLK6_DIV_MASK     (7 << 0)
+#define SI5351_OUTPUT_CLK_DIV_SHIFT     4
+#define SI5351_OUTPUT_CLK_DIV6_SHIFT    0
+#define SI5351_OUTPUT_CLK_DIV_1         0
+#define SI5351_OUTPUT_CLK_DIV_2         1
+#define SI5351_OUTPUT_CLK_DIV_4         2
+#define SI5351_OUTPUT_CLK_DIV_8         3
+#define SI5351_OUTPUT_CLK_DIV_16        4
+#define SI5351_OUTPUT_CLK_DIV_32        5
+#define SI5351_OUTPUT_CLK_DIV_64        6
+#define SI5351_OUTPUT_CLK_DIV_128       7
+#define SI5351_OUTPUT_CLK_DIVBY4       (3<<2)
+
+#define SI5351_SSC_PARAM0               149
+#define SI5351_SSC_PARAM1               150
+#define SI5351_SSC_PARAM2               151
+#define SI5351_SSC_PARAM3               152
+#define SI5351_SSC_PARAM4               153
+#define SI5351_SSC_PARAM5               154
+#define SI5351_SSC_PARAM6               155
+#define SI5351_SSC_PARAM7               156
+#define SI5351_SSC_PARAM8               157
+#define SI5351_SSC_PARAM9               158
+#define SI5351_SSC_PARAM10              159
+#define SI5351_SSC_PARAM11              160
+#define SI5351_SSC_PARAM12              161
+
+#define SI5351_VXCO_PARAMETERS_LOW      162
+#define SI5351_VXCO_PARAMETERS_MID      163
+#define SI5351_VXCO_PARAMETERS_HIGH     164
+
+#define SI5351_CLK0_PHASE_OFFSET        165
+#define SI5351_CLK1_PHASE_OFFSET        166
+#define SI5351_CLK2_PHASE_OFFSET        167
+#define SI5351_CLK3_PHASE_OFFSET        168
+#define SI5351_CLK4_PHASE_OFFSET        169
+#define SI5351_CLK5_PHASE_OFFSET        170
+
+#define SI5351_PLL_RESET                177
+#define SI5351_PLL_RESET_B              (1<<7)
+#define SI5351_PLL_RESET_A              (1<<5)
+
+#define SI5351_CRYSTAL_LOAD             183
+#define SI5351_CRYSTAL_LOAD_MASK        (3<<6)
+#define SI5351_CRYSTAL_LOAD_0PF         (0<<6)
+#define SI5351_CRYSTAL_LOAD_6PF         (1<<6)
+#define SI5351_CRYSTAL_LOAD_8PF         (2<<6)
+#define SI5351_CRYSTAL_LOAD_10PF        (3<<6)
+
+#define SI5351_FANOUT_ENABLE            187
+#define SI5351_CLKIN_ENABLE             (1<<7)
+#define SI5351_XTAL_ENABLE              (1<<6)
+#define SI5351_MULTISYNTH_ENABLE        (1<<4)
+
+
+/* Macro definitions */
+
+//#define RFRAC_DENOM ((1L << 20) - 1)
+#define RFRAC_DENOM 1000000ULL
+
+/*
+ * Based on former asm-ppc/div64.h and asm-m68knommu/div64.h
+ *
+ * The semantics of do_div() are:
+ *
+ * uint32_t do_div(uint64_t *n, uint32_t base)
+ * {
+ *      uint32_t remainder = *n % base;
+ *      *n = *n / base;
+ *      return remainder;
+ * }
+ *
+ * NOTE: macro parameter n is evaluated multiple times,
+ *       beware of side effects!
+ */
+
+# define do_div(n,base) ({                                      \
+        uint64_t __base = (base);                               \
+        uint64_t __rem;                                         \
+        __rem = ((uint64_t)(n)) % __base;                       \
+        (n) = ((uint64_t)(n)) / __base;                         \
+        __rem;                                                  \
+ })
+
+/* Enum definitions */
+
+/*
+ * enum si5351_variant - SiLabs Si5351 chip variant
+ * @SI5351_VARIANT_A: Si5351A (8 output clocks, XTAL input)
+ * @SI5351_VARIANT_A3: Si5351A MSOP10 (3 output clocks, XTAL input)
+ * @SI5351_VARIANT_B: Si5351B (8 output clocks, XTAL/VXCO input)
+ * @SI5351_VARIANT_C: Si5351C (8 output clocks, XTAL/CLKIN input)
+ */
+/*
+enum si5351_variant {
+	SI5351_VARIANT_A = 1,
+	SI5351_VARIANT_A3 = 2,
+	SI5351_VARIANT_B = 3,
+	SI5351_VARIANT_C = 4,
+};
+*/
+
+enum si5351_clock {SI5351_CLK0, SI5351_CLK1, SI5351_CLK2, SI5351_CLK3,
+	SI5351_CLK4, SI5351_CLK5, SI5351_CLK6, SI5351_CLK7};
+
+enum si5351_pll {SI5351_PLLA, SI5351_PLLB};
+
+enum si5351_drive {SI5351_DRIVE_2MA, SI5351_DRIVE_4MA, SI5351_DRIVE_6MA, SI5351_DRIVE_8MA};
+
+enum si5351_clock_source {SI5351_CLK_SRC_XTAL, SI5351_CLK_SRC_CLKIN, SI5351_CLK_SRC_MS0, SI5351_CLK_SRC_MS};
+
+enum si5351_clock_disable {SI5351_CLK_DISABLE_LOW, SI5351_CLK_DISABLE_HIGH, SI5351_CLK_DISABLE_HI_Z, SI5351_CLK_DISABLE_NEVER};
+
+enum si5351_clock_fanout {SI5351_FANOUT_CLKIN, SI5351_FANOUT_XO, SI5351_FANOUT_MS};
+
+enum si5351_pll_input {SI5351_PLL_INPUT_XO, SI5351_PLL_INPUT_CLKIN};
+
+/* Struct definitions */
+
+struct Si5351RegSet
 {
-  {  15, 0x00 },    /* Input source = crystal for PLLA and PLLB */
-  {  16, 0x4F },    /* CLK0 Control: 8mA drive, Multisynth 0 as CLK0 source, Clock not inverted, Source = PLLA, Multisynth 0 in integer mode, clock powered up */
-  {  17, 0x4F },    /* CLK1 Control: 8mA drive, Multisynth 1 as CLK1 source, Clock not inverted, Source = PLLA, Multisynth 1 in integer mode, clock powered up */
-  {  18, 0x6F },    /* CLK2 Control: 8mA drive, Multisynth 2 as CLK2 source, Clock not inverted, Source = PLLB, Multisynth 2 in integer mode, clock powered up */
-  {  19, 0x80 },    /* CLK3 Control: Not used ... clock powered down */
-  {  20, 0x80 },    /* CLK4 Control: Not used ... clock powered down */
-  {  21, 0x80 },    /* CLK5 Control: Not used ... clock powered down */
-  {  22, 0x80 },    /* CLK6 Control: Not used ... clock powered down */
-  {  23, 0x80 },    /* CLK7 Control: Not used ... clock powered down */
-  {  24, 0x00 },    /* Clock disable state 0..3 (low when disabled) */
-  {  25, 0x00 },    /* Clock disable state 4..7 (low when disabled) */
-  /* PLL_A Setup */
-  {  26, 0x00 },
-  {  27, 0x05 },
-  {  28, 0x00 },
-  {  29, 0x0C },
-  {  30, 0x66 },
-  {  31, 0x00 },
-  {  32, 0x00 },
-  {  33, 0x02 },
-  /* PLL_B Setup */
-  {  34, 0x02 },
-  {  35, 0x71 },
-  {  36, 0x00 },
-  {  37, 0x0C },
-  {  38, 0x1A },
-  {  39, 0x00 },
-  {  40, 0x00 },
-  {  41, 0x86 },
-  /* Multisynth Setup */
-  {  42, 0x00 },
-  {  43, 0x01 },
-  {  44, 0x00 },
-  {  45, 0x01 },
-  {  46, 0x00 },
-  {  47, 0x00 },
-  {  48, 0x00 },
-  {  49, 0x00 },
-  {  50, 0x00 },
-  {  51, 0x01 },
-  {  52, 0x00 },
-  {  53, 0x1C },
-  {  54, 0x00 },
-  {  55, 0x00 },
-  {  56, 0x00 },
-  {  57, 0x00 },
-  {  58, 0x00 },
-  {  59, 0x01 },
-  {  60, 0x00 },
-  {  61, 0x18 },
-  {  62, 0x00 },
-  {  63, 0x00 },
-  {  64, 0x00 },
-  {  65, 0x00 },
-  {  66, 0x00 },
-  {  67, 0x00 },
-  {  68, 0x00 },
-  {  69, 0x00 },
-  {  70, 0x00 },
-  {  71, 0x00 },
-  {  72, 0x00 },
-  {  73, 0x00 },
-  {  74, 0x00 },
-  {  75, 0x00 },
-  {  76, 0x00 },
-  {  77, 0x00 },
-  {  78, 0x00 },
-  {  79, 0x00 },
-  {  80, 0x00 },
-  {  81, 0x00 },
-  {  82, 0x00 },
-  {  83, 0x00 },
-  {  84, 0x00 },
-  {  85, 0x00 },
-  {  86, 0x00 },
-  {  87, 0x00 },
-  {  88, 0x00 },
-  {  89, 0x00 },
-  {  90, 0x00 },
-  {  91, 0x00 },
-  {  92, 0x00 },
-  /* Misc Config Register */
-  { 149, 0x00 },
-  { 150, 0x00 },
-  { 151, 0x00 },
-  { 152, 0x00 },
-  { 153, 0x00 },
-  { 154, 0x00 },
-  { 155, 0x00 },
-  { 156, 0x00 },
-  { 157, 0x00 },
-  { 158, 0x00 },
-  { 159, 0x00 },
-  { 160, 0x00 },
-  { 161, 0x00 },
-  { 162, 0x00 },
-  { 163, 0x00 },
-  { 164, 0x00 },
-  { 165, 0x00 },
-  { 166, 0x00 },
-  { 167, 0x00 },
-  { 168, 0x00 },
-  { 169, 0x00 },
-  { 170, 0x00 }
+	uint32_t p1;
+	uint32_t p2;
+	uint32_t p3;
 };
 
-/* See http://www.silabs.com/Support%20Documents/TechnicalDocs/AN619.pdf for registers 26..41 */
-enum
+struct Si5351Status
 {
-  SI5351_REGISTER_0_DEVICE_STATUS                       = 0,
-  SI5351_REGISTER_1_INTERRUPT_STATUS_STICKY             = 1,
-  SI5351_REGISTER_2_INTERRUPT_STATUS_MASK               = 2,
-  SI5351_REGISTER_3_OUTPUT_ENABLE_CONTROL               = 3,
-  SI5351_REGISTER_9_OEB_PIN_ENABLE_CONTROL              = 9,
-  SI5351_REGISTER_15_PLL_INPUT_SOURCE                   = 15,
-  SI5351_REGISTER_16_CLK0_CONTROL                       = 16,
-  SI5351_REGISTER_17_CLK1_CONTROL                       = 17,
-  SI5351_REGISTER_18_CLK2_CONTROL                       = 18,
-  SI5351_REGISTER_19_CLK3_CONTROL                       = 19,
-  SI5351_REGISTER_20_CLK4_CONTROL                       = 20,
-  SI5351_REGISTER_21_CLK5_CONTROL                       = 21,
-  SI5351_REGISTER_22_CLK6_CONTROL                       = 22,
-  SI5351_REGISTER_23_CLK7_CONTROL                       = 23,
-  SI5351_REGISTER_24_CLK3_0_DISABLE_STATE               = 24,
-  SI5351_REGISTER_25_CLK7_4_DISABLE_STATE               = 25,
-  SI5351_REGISTER_42_MULTISYNTH0_PARAMETERS_1           = 42,
-  SI5351_REGISTER_43_MULTISYNTH0_PARAMETERS_2           = 43,
-  SI5351_REGISTER_44_MULTISYNTH0_PARAMETERS_3           = 44,
-  SI5351_REGISTER_45_MULTISYNTH0_PARAMETERS_4           = 45,
-  SI5351_REGISTER_46_MULTISYNTH0_PARAMETERS_5           = 46,
-  SI5351_REGISTER_47_MULTISYNTH0_PARAMETERS_6           = 47,
-  SI5351_REGISTER_48_MULTISYNTH0_PARAMETERS_7           = 48,
-  SI5351_REGISTER_49_MULTISYNTH0_PARAMETERS_8           = 49,
-  SI5351_REGISTER_50_MULTISYNTH1_PARAMETERS_1           = 50,
-  SI5351_REGISTER_51_MULTISYNTH1_PARAMETERS_2           = 51,
-  SI5351_REGISTER_52_MULTISYNTH1_PARAMETERS_3           = 52,
-  SI5351_REGISTER_53_MULTISYNTH1_PARAMETERS_4           = 53,
-  SI5351_REGISTER_54_MULTISYNTH1_PARAMETERS_5           = 54,
-  SI5351_REGISTER_55_MULTISYNTH1_PARAMETERS_6           = 55,
-  SI5351_REGISTER_56_MULTISYNTH1_PARAMETERS_7           = 56,
-  SI5351_REGISTER_57_MULTISYNTH1_PARAMETERS_8           = 57,
-  SI5351_REGISTER_58_MULTISYNTH2_PARAMETERS_1           = 58,
-  SI5351_REGISTER_59_MULTISYNTH2_PARAMETERS_2           = 59,
-  SI5351_REGISTER_60_MULTISYNTH2_PARAMETERS_3           = 60,
-  SI5351_REGISTER_61_MULTISYNTH2_PARAMETERS_4           = 61,
-  SI5351_REGISTER_62_MULTISYNTH2_PARAMETERS_5           = 62,
-  SI5351_REGISTER_63_MULTISYNTH2_PARAMETERS_6           = 63,
-  SI5351_REGISTER_64_MULTISYNTH2_PARAMETERS_7           = 64,
-  SI5351_REGISTER_65_MULTISYNTH2_PARAMETERS_8           = 65,
-  SI5351_REGISTER_66_MULTISYNTH3_PARAMETERS_1           = 66,
-  SI5351_REGISTER_67_MULTISYNTH3_PARAMETERS_2           = 67,
-  SI5351_REGISTER_68_MULTISYNTH3_PARAMETERS_3           = 68,
-  SI5351_REGISTER_69_MULTISYNTH3_PARAMETERS_4           = 69,
-  SI5351_REGISTER_70_MULTISYNTH3_PARAMETERS_5           = 70,
-  SI5351_REGISTER_71_MULTISYNTH3_PARAMETERS_6           = 71,
-  SI5351_REGISTER_72_MULTISYNTH3_PARAMETERS_7           = 72,
-  SI5351_REGISTER_73_MULTISYNTH3_PARAMETERS_8           = 73,
-  SI5351_REGISTER_74_MULTISYNTH4_PARAMETERS_1           = 74,
-  SI5351_REGISTER_75_MULTISYNTH4_PARAMETERS_2           = 75,
-  SI5351_REGISTER_76_MULTISYNTH4_PARAMETERS_3           = 76,
-  SI5351_REGISTER_77_MULTISYNTH4_PARAMETERS_4           = 77,
-  SI5351_REGISTER_78_MULTISYNTH4_PARAMETERS_5           = 78,
-  SI5351_REGISTER_79_MULTISYNTH4_PARAMETERS_6           = 79,
-  SI5351_REGISTER_80_MULTISYNTH4_PARAMETERS_7           = 80,
-  SI5351_REGISTER_81_MULTISYNTH4_PARAMETERS_8           = 81,
-  SI5351_REGISTER_82_MULTISYNTH5_PARAMETERS_1           = 82,
-  SI5351_REGISTER_83_MULTISYNTH5_PARAMETERS_2           = 83,
-  SI5351_REGISTER_84_MULTISYNTH5_PARAMETERS_3           = 84,
-  SI5351_REGISTER_85_MULTISYNTH5_PARAMETERS_4           = 85,
-  SI5351_REGISTER_86_MULTISYNTH5_PARAMETERS_5           = 86,
-  SI5351_REGISTER_87_MULTISYNTH5_PARAMETERS_6           = 87,
-  SI5351_REGISTER_88_MULTISYNTH5_PARAMETERS_7           = 88,
-  SI5351_REGISTER_89_MULTISYNTH5_PARAMETERS_8           = 89,
-  SI5351_REGISTER_90_MULTISYNTH6_PARAMETERS             = 90,
-  SI5351_REGISTER_91_MULTISYNTH7_PARAMETERS             = 91,
-  SI5351_REGISTER_092_CLOCK_6_7_OUTPUT_DIVIDER          = 92,
-  SI5351_REGISTER_165_CLK0_INITIAL_PHASE_OFFSET         = 165,
-  SI5351_REGISTER_166_CLK1_INITIAL_PHASE_OFFSET         = 166,
-  SI5351_REGISTER_167_CLK2_INITIAL_PHASE_OFFSET         = 167,
-  SI5351_REGISTER_168_CLK3_INITIAL_PHASE_OFFSET         = 168,
-  SI5351_REGISTER_169_CLK4_INITIAL_PHASE_OFFSET         = 169,
-  SI5351_REGISTER_170_CLK5_INITIAL_PHASE_OFFSET         = 170,
-  SI5351_REGISTER_177_PLL_RESET                         = 177,
-  SI5351_REGISTER_183_CRYSTAL_INTERNAL_LOAD_CAPACITANCE	= 183
+	uint8_t SYS_INIT;
+	uint8_t LOL_B;
+	uint8_t LOL_A;
+	uint8_t LOS;
+	uint8_t REVID;
 };
 
-typedef enum
+struct Si5351IntStatus
 {
-  SI5351_PLL_A = 0,
-  SI5351_PLL_B,
-} si5351PLL_t;
+	uint8_t SYS_INIT_STKY;
+	uint8_t LOL_B_STKY;
+	uint8_t LOL_A_STKY;
+	uint8_t LOS_STKY;
+};
 
-typedef enum
-{
-  SI5351_CRYSTAL_LOAD_6PF  = (1<<6),
-  SI5351_CRYSTAL_LOAD_8PF  = (2<<6),
-  SI5351_CRYSTAL_LOAD_10PF = (3<<6)
-} si5351CrystalLoad_t;
+//Si5351(uint8_t i2c_addr = SI5351_BUS_BASE_ADDR);
+bool si5351_init(I2C_HandleTypeDef *hi2c, uint8_t, uint8_t, uint32_t, int32_t);
+void si5351_reset(void);
+uint8_t si5351_set_freq(uint64_t, enum si5351_clock);
+uint8_t set_freq_manual(uint64_t, uint64_t, enum si5351_clock);
+void set_pll(uint64_t, enum si5351_pll);
+void set_ms(enum si5351_clock, struct Si5351RegSet, uint8_t, uint8_t, uint8_t);
+void output_enable(enum si5351_clock, uint8_t);
+void si5351_drive_strength(enum si5351_clock, enum si5351_drive);
+void update_status(void);
+void set_correction(int32_t, enum si5351_pll_input);
+void set_phase(enum si5351_clock, uint8_t);
+int32_t get_correction(enum si5351_pll_input);
+void pll_reset(enum si5351_pll);
+void set_ms_source(enum si5351_clock, enum si5351_pll);
+void set_int(enum si5351_clock, uint8_t);
+void set_clock_pwr(enum si5351_clock, uint8_t);
+void set_clock_invert(enum si5351_clock, uint8_t);
+void set_clock_source(enum si5351_clock, enum si5351_clock_source);
+void set_clock_disable(enum si5351_clock, enum si5351_clock_disable);
+void set_clock_fanout(enum si5351_clock_fanout, uint8_t);
+void set_pll_input(enum si5351_pll, enum si5351_pll_input);
+void set_vcxo(uint64_t, uint8_t);
+void set_ref_freq(uint32_t, enum si5351_pll_input);
+uint8_t si5351_write_bulk(uint8_t, uint8_t, uint8_t *);
+uint8_t si5351_write(uint8_t, uint8_t);
+uint8_t si5351_read(uint8_t);
 
-typedef enum
-{
-  SI5351_CRYSTAL_FREQ_25MHZ = (25000000),
-  SI5351_CRYSTAL_FREQ_27MHZ = (27000000)
-} si5351CrystalFreq_t;
+extern enum si5351_pll pll_assignment[8];
+extern uint64_t clk_freq[8];
+extern uint64_t plla_freq;
+extern uint64_t pllb_freq;
+extern enum si5351_pll_input plla_ref_osc;
+extern enum si5351_pll_input pllb_ref_osc;
+extern uint32_t xtal_freq[2];
 
-typedef enum
-{
-  SI5351_MULTISYNTH_DIV_4  = 4,
-  SI5351_MULTISYNTH_DIV_6  = 6,
-  SI5351_MULTISYNTH_DIV_8  = 8
-} si5351MultisynthDiv_t;
+//private:
+uint64_t pll_calc(enum si5351_pll, uint64_t, struct Si5351RegSet *, int32_t, uint8_t);
+uint64_t multisynth_calc(uint64_t, uint64_t, struct Si5351RegSet *);
+uint64_t multisynth67_calc(uint64_t, uint64_t, struct Si5351RegSet *);
+void update_sys_status(struct Si5351Status *);
+void update_int_status(struct Si5351IntStatus *);
+void ms_div(enum si5351_clock, uint8_t, uint8_t);
+uint8_t select_r_div(uint64_t *);
+uint8_t select_r_div_ms67(uint64_t *);
+extern int32_t ref_correction[2];
+extern uint8_t clkin_div;
+extern uint8_t i2c_bus_addr;
+extern bool clk_first_set[8];
 
-typedef enum
-{
-  SI5351_R_DIV_1   = 0,
-  SI5351_R_DIV_2   = 1,
-  SI5351_R_DIV_4   = 2,
-  SI5351_R_DIV_8   = 3,
-  SI5351_R_DIV_16  = 4,
-  SI5351_R_DIV_32  = 5,
-  SI5351_R_DIV_64  = 6,
-  SI5351_R_DIV_128 = 7,
-} si5351RDiv_t;
-
-typedef struct
-{
-  uint8_t                	initialised;
-  si5351CrystalFreq_t 		crystalFreq;
-  si5351CrystalLoad_t 		crystalLoad;
-  uint32_t            		crystalPPM;
-  uint8_t                	plla_configured;
-  uint32_t            		plla_freq;
-  uint8_t                	pllb_configured;
-  uint32_t            		pllb_freq;
-  uint32_t            		ms0_freq;
-  uint32_t            		ms1_freq;
-  uint32_t            		ms2_freq;
-  uint32_t            		ms0_r_div;
-  uint32_t            		ms1_r_div;
-  uint32_t            		ms2_r_div;
-} si5351Config_t;
-
-
-  
-  err_t si5351_Init(void);
-  err_t si5351_setupPLL(si5351PLL_t pll, uint8_t mult, uint32_t num, uint32_t denom);
-  err_t si5351_setupPLLInt(si5351PLL_t pll, uint8_t mult);
-  err_t si5351_setupMultisynth(uint8_t output, si5351PLL_t pllSource, uint32_t div, uint32_t num, uint32_t denom);
-  err_t si5351_setupMultisynthInt(uint8_t output, si5351PLL_t pllSource, si5351MultisynthDiv_t div);
-  err_t si5351_enableOutputs(uint8_t enabled);
-  err_t si5351_setupRdiv(uint8_t  output, si5351RDiv_t div);
-
-
-  extern si5351Config_t m_si5351Config;
-  
-  err_t si5351_write8(uint8_t reg, uint8_t value);
-  err_t si5351_read8(uint8_t reg, uint8_t *value);
-
-#endif
+#endif /* SI5351_H_ */

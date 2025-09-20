@@ -104,7 +104,7 @@ static void MX_I2C2_Init(void);
 static void MX_TIM2_Init(void);
 static void MX_SPI1_Init(void);
 /* USER CODE BEGIN PFP */
-err_t si5351_set_frequency(uint8_t output, uint32_t frequency) {
+/*err_t si5351_set_frequency(uint8_t output, uint32_t frequency) {
     // Проверка допустимости выхода и частоты
     if (output > 2) return ERROR_INVALIDPARAMETER;
     if (frequency < 8000 || frequency > 150000000) return ERROR_INVALIDPARAMETER;
@@ -163,7 +163,16 @@ err_t si5351_set_frequency(uint8_t output, uint32_t frequency) {
 
     return ERROR_NONE;
 }
-
+*/
+void set_freqq(uint8_t ch){
+	if(ch==0){
+		si5351_set_freq(freq[0]*1000*100ULL, SI5351_CLK0);
+	}else if(ch==1){
+		si5351_set_freq(freq[1]*1000*100ULL, SI5351_CLK1);
+	}else{
+		si5351_set_freq(freq[2]*1000*100ULL, SI5351_CLK2);
+	}
+}
 void int_to_str(int num, char *str) {
     char tmp[12]; // Временный буфер
     int i = 0;
@@ -396,8 +405,8 @@ void int_mode_1(){
 			choice=0;
 			interface_mode=0;
 
-			si5351_set_frequency(choiced_channel, freq[choiced_channel]*1000);
-			si5351_enableOutputs(0xFF);
+			set_freqq(choiced_channel);
+			//si5351_enableOutputs(0xFF);
 
 			Write_Flash_Array(freq);//обновляем значение в памяти
 			set_encoder(choiced_channel);
@@ -503,8 +512,8 @@ void process_client_connection(uint8_t sn)
                 	freq[choiced_channel]=r;
                 }
                 int_to_str(freq[choiced_channel], num_string[choiced_channel]);
-                si5351_set_frequency(choiced_channel, freq[choiced_channel]*1000);//устанвливаем частоту введённую через ethernet
-                si5351_enableOutputs(0xFF);//включаем все выходы
+                set_freqq(choiced_channel);//устанвливаем частоту введённую через ethernet
+                //si5351_enableOutputs(0xFF);//включаем все выходы
                 Write_Flash_Array(freq);
                 print_interface_mode0();
                 HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET);
@@ -661,13 +670,13 @@ int main(void)
   /* USER CODE BEGIN 2 */
   HAL_TIM_Encoder_Start(&htim1, TIM_CHANNEL_ALL);
   ssd1306_Init();
-  si5351_Init();
+  //si5351_Init();
 
   set_encoder(0);//выставление энкодера в 0
-      /*freq[0]=8;//начальная минимальная частота канала 0
+      freq[0]=8;//начальная минимальная частота канала 0
       freq[1]=8;//начальная минимальная частота канала 1
       freq[2]=8;//начальная минимальная частота канала 2
-      */
+
       if (Is_Flash_Valid()==0) {
           Write_Flash_Array(freq);
       }else{
@@ -698,10 +707,18 @@ int main(void)
 
 
 
-  si5351_set_frequency(0, freq[0]*1000);//устанвливаем частоту в минимальную
-  si5351_set_frequency(1, freq[1]*1000);//устанвливаем частоту в минимальную
-  si5351_set_frequency(2, freq[2]*1000);//устанвливаем частоту в минимальную
-  si5351_enableOutputs(0xFF);//включаем все выходы
+            int32_t si5351_FREQ_CORR = 0;
+            uint8_t si5351_XTAL = 25;
+            si5351_init(&hi2c1, SI5351_BUS_BASE_ADDR, SI5351_CRYSTAL_LOAD_0PF, si5351_XTAL*1000000, si5351_FREQ_CORR);
+
+            //HAL_Delay(100);
+            si5351_drive_strength(SI5351_CLK0, SI5351_DRIVE_8MA);
+            si5351_drive_strength(SI5351_CLK1, SI5351_DRIVE_8MA);
+            si5351_drive_strength(SI5351_CLK2, SI5351_DRIVE_8MA);
+
+            si5351_set_freq(freq[0]*1000*100ULL, SI5351_CLK0);
+            si5351_set_freq(freq[1]*1000*100ULL, SI5351_CLK1);
+            si5351_set_freq(freq[2]*1000*100ULL, SI5351_CLK2);
 
 
 
