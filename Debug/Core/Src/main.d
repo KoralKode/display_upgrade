@@ -39,7 +39,8 @@ Core/Src/main.o: ../Core/Src/main.c ../Core/Inc/main.h \
  C:/Users/stepa/STM32CubeIDE/workspace_1.18.0/display/Drivers/ioLibrary_Driver-master/Ethernet/socket.h \
  C:/Users/stepa/STM32CubeIDE/workspace_1.18.0/display/Drivers/ioLibrary_Driver-master/Ethernet/wizchip_conf.h \
  C:/Users/stepa/STM32CubeIDE/workspace_1.18.0/display/Drivers/ioLibrary_Driver-master/Ethernet/W5500/w5500.h \
- C:/Users/stepa/STM32CubeIDE/workspace_1.18.0/display/Drivers/ioLibrary_Driver-master/Ethernet/wizchip_conf.h
+ C:/Users/stepa/STM32CubeIDE/workspace_1.18.0/display/Drivers/ioLibrary_Driver-master/Ethernet/wizchip_conf.h \
+ C:/Users/stepa/STM32CubeIDE/workspace_1.18.0/display/Drivers/ioLibrary_Driver-master/Internet/DHCP/dhcp.h
 ../Core/Inc/main.h:
 ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal.h:
 ../Core/Inc/stm32f1xx_hal_conf.h:
@@ -82,3 +83,4 @@ C:/Users/stepa/STM32CubeIDE/workspace_1.18.0/display/Drivers/ioLibrary_Driver-ma
 C:/Users/stepa/STM32CubeIDE/workspace_1.18.0/display/Drivers/ioLibrary_Driver-master/Ethernet/wizchip_conf.h:
 C:/Users/stepa/STM32CubeIDE/workspace_1.18.0/display/Drivers/ioLibrary_Driver-master/Ethernet/W5500/w5500.h:
 C:/Users/stepa/STM32CubeIDE/workspace_1.18.0/display/Drivers/ioLibrary_Driver-master/Ethernet/wizchip_conf.h:
+C:/Users/stepa/STM32CubeIDE/workspace_1.18.0/display/Drivers/ioLibrary_Driver-master/Internet/DHCP/dhcp.h:

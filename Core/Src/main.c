@@ -33,7 +33,7 @@
 #include "si5351.h"
 #include "stm32f1xx_hal_i2c.h"
 #include "socket.h"
-
+#include "dhcp.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -54,6 +54,11 @@ typedef struct {
 #define HTTP_SOCKET     0
 #define PORT_TCPS        5000
 #define DATA_BUF_SIZE 2048
+#define DHCP_SOCKET     0
+#define DNS_SOCKET      1
+#define SOCK_TCPS       0
+#define SOCK_UDPS       1
+#define PORT_UDPS       3000
 uint8_t gDATABUF[DATA_BUF_SIZE];
 /* USER CODE END PD */
 
@@ -80,17 +85,13 @@ char num_string [3][7];//массив частот в строках
 uint8_t choiced_num;//порядковый номер выбранной цифры в значении частоты
 uint8_t choiced_channel;//номер выбранного канала
 char interface_mode;//0-интерфейс выбора канал, 1-интерфейс выбора частот
-char is_ethernet_work;
-uint8_t socket_status;
 //ethernet код
-wiz_NetInfo gWIZNETINFO={ .mac={0x00, 0x08, 0xDC, 0xAB, 0xCD, 0xEF},
-	    .ip = {192, 168, 0, 100},                     // IP платы
-	    .sn = {255, 255, 255, 0},                     // Маска подсети
-	    .gw = {192, 168, 0, 1},                       // Шлюз (роутер)
-	    .dns = {0, 0, 0, 0},                          // DNS (можно 0)
-	    .dhcp = NETINFO_STATIC                        // Статический IP
-
-
+uint8_t socket_status;
+uint8_t RX_BUF[1024];
+uint8_t TX_BUF[1024];
+wiz_NetInfo net_info = {
+    .mac  = { 0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED },
+    .dhcp = NETINFO_DHCP
 };
 
 /* USER CODE END PV */
@@ -104,66 +105,7 @@ static void MX_I2C2_Init(void);
 static void MX_TIM2_Init(void);
 static void MX_SPI1_Init(void);
 /* USER CODE BEGIN PFP */
-/*err_t si5351_set_frequency(uint8_t output, uint32_t frequency) {
-    // Проверка допустимости выхода и частоты
-    if (output > 2) return ERROR_INVALIDPARAMETER;
-    if (frequency < 8000 || frequency > 150000000) return ERROR_INVALIDPARAMETER;
 
-    // Определение R-делителя для частот < 500 кГц
-    si5351RDiv_t r_div = SI5351_R_DIV_1;
-    uint32_t r_div_value = 1;
-    if (frequency < 500000) {
-        uint32_t min_freq = frequency;
-        while (min_freq < 500000 && r_div_value < 128) {
-            r_div_value *= 2;
-            min_freq = frequency * r_div_value;
-        }
-        switch (r_div_value) {
-            case 2:   r_div = SI5351_R_DIV_2;   break;
-            case 4:   r_div = SI5351_R_DIV_4;   break;
-            case 8:   r_div = SI5351_R_DIV_8;   break;
-            case 16:  r_div = SI5351_R_DIV_16;  break;
-            case 32:  r_div = SI5351_R_DIV_32;  break;
-            case 64:  r_div = SI5351_R_DIV_64;  break;
-            case 128: r_div = SI5351_R_DIV_128; break;
-            default:  r_div = SI5351_R_DIV_1;   break;
-        }
-    }
-
-    // Расчет частоты для мультисинта (до R-делителя)
-    double f_ms = (double)frequency * r_div_value;
-
-    // Подбор делителя мультисинта (8-900)
-    uint32_t div = (uint32_t)(800000000.0 / f_ms); // Целевой делитель для ~800 МГц
-    if (div < 8) div = 8;
-    if (div > 900) div = 900;
-
-    // Расчет частоты PLL
-    double f_pll = f_ms * div;
-    if (f_pll < 600000000 || f_pll > 900000000) {
-        // Корректировка при выходе за пределы 600-900 МГц
-        div = (f_pll < 600000000) ? (uint32_t)ceil(600000000.0 / f_ms) : 900;
-        f_pll = f_ms * div;
-    }
-
-    // Настройка PLL
-    double f_xtal = (double)m_si5351Config.crystalFreq;
-    uint32_t mult = (uint32_t)(f_pll / f_xtal);
-    double fraction = (f_pll / f_xtal) - mult;
-    uint32_t num = (uint32_t)round(fraction * 1048575.0); // 20-битный числитель
-    uint32_t denom = 1048575; // 20-битный знаменатель
-
-    // Выбор PLL: выход 2 → PLL_B, остальные → PLL_A
-    si5351PLL_t pll = (output == 2) ? SI5351_PLL_B : SI5351_PLL_A;
-
-    // Применение настроек
-    ASSERT_STATUS(si5351_setupPLL(pll, mult, num, denom));
-    ASSERT_STATUS(si5351_setupMultisynth(output, pll, div, 0, 1)); // Целочисленный режим
-    ASSERT_STATUS(si5351_setupRdiv(output, r_div));
-
-    return ERROR_NONE;
-}
-*/
 void set_freqq(uint8_t ch){
 	if(ch==0){
 		si5351_set_freq(freq[0]*1000*100ULL, SI5351_CLK0);
@@ -474,10 +416,16 @@ uint8_t W5500_ReadByte(void){
 void W5500_WriteByte(uint8_t byte){
 	W5500_WriteBuff(&byte, sizeof(byte));
 }
+volatile bool ip_assigned = false;
+void Callback_IPAssigned(void) {
+    ip_assigned = true;
+}
 
+void Callback_IPConflict(void) {
+    ip_assigned = false;
+}
+uint8_t dhcp_buffer[1024];
 uint8_t stat;
-uint8_t reqnr;
-char Message[128];
 // Функция обработки клиентского подключения
 void process_client_connection(uint8_t sn)
 {
@@ -513,7 +461,6 @@ void process_client_connection(uint8_t sn)
                 }
                 int_to_str(freq[choiced_channel], num_string[choiced_channel]);
                 set_freqq(choiced_channel);//устанвливаем частоту введённую через ethernet
-                //si5351_enableOutputs(0xFF);//включаем все выходы
                 Write_Flash_Array(freq);
                 print_interface_mode0();
                 HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET);
@@ -525,7 +472,7 @@ void process_client_connection(uint8_t sn)
   	  uint32_t t=HAL_GetTick();
 
   	  while(t>HAL_GetTick()-10);
-        //HAL_Delay(10); // Небольшая задержка
+        // Небольшая задержка
     }
 
 }
@@ -535,7 +482,6 @@ uint8_t init_server(uint8_t sn, uint16_t port)
     // Закрываем сокет если был открыт
     if(getSn_SR(sn) != SOCK_CLOSED) {
         close(sn);
-        //HAL_Delay(100);
     }
 
     // Создаем сокет
@@ -546,7 +492,6 @@ uint8_t init_server(uint8_t sn, uint16_t port)
 
     // Слушаем порт
     if((stat = listen(sn)) != SOCK_OK) {
-
         close(sn);
         return 0;
     }
@@ -575,7 +520,6 @@ void ethernet_work(){
 
 	              case SOCK_ESTABLISHED:
 	                  // Клиент подключен - обрабатываем
-	            	  //is_ethernet_work=1;
 	            	  if(interface_mode==0){
 	                  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET); // LED ON
 
@@ -592,7 +536,6 @@ void ethernet_work(){
 	                  // Сервер не запущен - пытаемся перезапустить
 	                  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET); // LED OFF
 	                  init_server(HTTP_SOCKET, 80);
-	                  //HAL_Delay(1000);
 	                  break;
 
 	              default:
@@ -605,6 +548,55 @@ void ethernet_work(){
 	          }
 
 	          //HAL_Delay(10);
+}
+
+uint8_t W5500Init() {
+    uint8_t retry_count = 0;
+    uint8_t success = 0;
+
+    // Несколько попыток инициализации
+    while (retry_count < 3 && !success) {
+        // Регистрация callback функций
+        reg_wizchip_cs_cbfunc(W5500_Select, W5500_Unselect);
+        reg_wizchip_spi_cbfunc(W5500_ReadByte, W5500_WriteByte);
+        reg_wizchip_spiburst_cbfunc(W5500_ReadBuff, W5500_WriteBuff);
+
+        uint8_t rx_tx_buff_sizes[] = {2, 2, 2, 2, 2, 2, 2, 2};
+
+        // Проверка инициализации W5500
+        if (wizchip_init(rx_tx_buff_sizes, rx_tx_buff_sizes) == 0) {
+            // Установка MAC адреса
+            setSHAR(net_info.mac);
+
+            // Инициализация DHCP
+            DHCP_init(DHCP_SOCKET, dhcp_buffer);
+            reg_dhcp_cbfunc(Callback_IPAssigned, Callback_IPAssigned, Callback_IPConflict);
+
+            // Ожидание получения IP с таймаутом
+            uint32_t timeout = 10000; // 10 секунд максимум
+            ip_assigned = false;
+
+            while (!ip_assigned && timeout > 0) {
+                DHCP_run();
+                timeout--;
+                HAL_Delay(1);
+            }
+
+            if (ip_assigned) {
+                getIPfromDHCP(net_info.ip);
+                getGWfromDHCP(net_info.gw);
+                getSNfromDHCP(net_info.sn);
+                wizchip_setnetinfo(&net_info);
+                success = 1;
+                break;
+            }
+        }
+
+        retry_count++;
+        HAL_Delay(500); // Задержка между попытками
+    }
+
+    return success;
 }
 //функция для работы программы во время прерываний
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
@@ -668,10 +660,10 @@ int main(void)
   MX_USB_DEVICE_Init();
   MX_SPI1_Init();
   /* USER CODE BEGIN 2 */
+  HAL_Delay(1000);
+  W5500Init();
   HAL_TIM_Encoder_Start(&htim1, TIM_CHANNEL_ALL);
   ssd1306_Init();
-  //si5351_Init();
-
   set_encoder(0);//выставление энкодера в 0
       freq[0]=8;//начальная минимальная частота канала 0
       freq[1]=8;//начальная минимальная частота канала 1
@@ -694,16 +686,7 @@ int main(void)
       print_interface_mode0();
       HAL_TIM_Base_Start_IT(&htim2);  // Запуск таймера с прерыванием
       // Инициализация W5500
-            reg_wizchip_cs_cbfunc(W5500_Select, W5500_Unselect);
-            reg_wizchip_spi_cbfunc(W5500_ReadByte, W5500_WriteByte);
-            reg_wizchip_spiburst_cbfunc(W5500_ReadBuff, W5500_WriteBuff);
-            //ssd1306_Init();
-            uint8_t rx_tx_buff_sizes[] = {2, 2, 2, 2, 2, 2, 2, 2};
-            wizchip_init(rx_tx_buff_sizes, rx_tx_buff_sizes);
-            wizchip_setnetinfo(&gWIZNETINFO);
-            ctlnetwork(CN_SET_NETINFO, (void*)&gWIZNETINFO);
-            //is_ethernet_work=0;
-            //HAL_Delay(1000);
+
 
 
 
@@ -711,7 +694,6 @@ int main(void)
             uint8_t si5351_XTAL = 25;
             si5351_init(&hi2c1, SI5351_BUS_BASE_ADDR, SI5351_CRYSTAL_LOAD_0PF, si5351_XTAL*1000000, si5351_FREQ_CORR);
 
-            //HAL_Delay(100);
             si5351_drive_strength(SI5351_CLK0, SI5351_DRIVE_8MA);
             si5351_drive_strength(SI5351_CLK1, SI5351_DRIVE_8MA);
             si5351_drive_strength(SI5351_CLK2, SI5351_DRIVE_8MA);
@@ -875,7 +857,7 @@ static void MX_SPI1_Init(void)
   hspi1.Init.CLKPolarity = SPI_POLARITY_LOW;
   hspi1.Init.CLKPhase = SPI_PHASE_1EDGE;
   hspi1.Init.NSS = SPI_NSS_SOFT;
-  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_4;
+  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_16;
   hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
   hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
   hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
